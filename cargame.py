@@ -23,6 +23,7 @@ class Game:
         self.speed_factor = self.SCREEN_HEIGHT / 660  # animate enemy vehicle
         self.car_lane = "R"
         self.car2_lane = "L"
+        self.current_enemy = None
 
         self.GRASS_COLOR = (60, 220, 0)
         self.DARK_ROAD_COLOR = (50, 50, 50)
@@ -75,6 +76,18 @@ class Game:
         self.car2_loc = self.car2.get_rect()
         self.car2_loc.center = self.left_lane, self.SCREEN_HEIGHT * 0.2
 
+        # load enemy truck
+        self.original_truck = pygame.image.load("assets/cars/truck.png")
+        self.truck = pygame.transform.scale(
+            self.original_truck,
+            (
+                int(self.original_truck.get_width() * (self.SCREEN_WIDTH / 800)),
+                int(self.original_truck.get_height() * (self.SCREEN_HEIGHT / 600)),
+            ),
+        )
+        self.truck_loc = self.truck.get_rect()
+        self.truck_loc.center = self.right_lane, -self.truck_loc.height
+
         self.scale = self.SCREEN_HEIGHT - self.car2_loc.height
 
         self.game_state = "MAIN GAME"
@@ -84,7 +97,7 @@ class Game:
         self.scores = []
 
     def main_loop(self):
-        while True:
+         while True:
             if self.game_paused:
                 self.game_paused_draw()
                 self.game_info_draw()
@@ -96,9 +109,7 @@ class Game:
             self.event_loop()
             self.event_updater_counter += 1
 
-            if (
-                self.event_updater_counter > self.SCREEN_HEIGHT
-            ):  # for dashed line it's sufficient to reset
+            if self.event_updater_counter > self.SCREEN_HEIGHT:
                 self.event_updater_counter = 0
 
             if self.game_state == "GAME OVER":
@@ -107,30 +118,26 @@ class Game:
                 pygame.display.update()
                 continue
 
-            # if score is greater than 5000 then move
-            # to a new level and increase the speed of enemy car
             if self.score % 5000 == 0:
                 self.speed += 0.16
                 self.level += 1
                 print("Level Up!")
 
-            self.car2_loc[1] += (
-                self.speed * self.speed_factor
-            )  # adding speed to change y-axis of car2_loc
+            # Update enemy positions
+            if self.current_enemy == 'car':
+                self.car2_loc[1] += self.speed * self.speed_factor
+            elif self.current_enemy == 'truck':
+                self.truck_loc[1] += self.speed * self.speed_factor * 0.8
 
-            # if car2 move & disappear then, changing the location of new car2
-            if self.car2_loc[1] > self.SCREEN_HEIGHT:
-                # using random integer from 0 to 1
-                # to appear car in random order
-                if random.randint(0, 1) == 0:
-                    self.car2_loc.center = self.right_lane, -200
-                    self.car2_lane = "R"
-                else:
-                    self.car2_loc.center = self.left_lane, -200
-                    self.car2_lane = "L"
+            # Check if we need to reset enemy positions
+            if (self.current_enemy == 'car' and self.car2_loc[1] > self.SCREEN_HEIGHT) or \
+               (self.current_enemy == 'truck' and self.truck_loc[1] > self.SCREEN_HEIGHT) or \
+               self.current_enemy is None:
+                self.spawn_new_enemy()
 
-            # If Cars collide game ends
-            if self.car2_loc.colliderect(self.car_loc):
+            # Check for collisions
+            if (self.current_enemy == 'car' and self.car2_loc.colliderect(self.car_loc)) or \
+               (self.current_enemy == 'truck' and self.truck_loc.colliderect(self.car_loc)):
                 self.car_crash_sound.play()
                 self.game_state = "GAME OVER"
 
@@ -141,6 +148,24 @@ class Game:
 
             self.CLOCK.tick(self.FPS)
             pygame.display.update()
+
+    def spawn_new_enemy(self):
+        # Randomly choose between car and truck
+        self.current_enemy = random.choice(['car', 'truck'])
+        
+        # Choose lane randomly
+        chosen_lane = random.choice([self.left_lane, self.right_lane])
+        
+        if self.current_enemy == 'car':
+            self.car2_loc.center = chosen_lane, -200
+            self.car2_lane = "L" if chosen_lane == self.left_lane else "R"
+            # Reset truck position off-screen
+            self.truck_loc.center = self.right_lane, -self.truck_loc.height - 1000
+        else:  # truck
+            self.truck_loc.center = chosen_lane, -self.truck_loc.height
+            self.truck_lane = "L" if chosen_lane == self.left_lane else "R"
+            # Reset car position off-screen
+            self.car2_loc.center = self.right_lane, -1000
 
     def handle_critical_events(self):
         for event in pygame.event.get():
@@ -300,9 +325,10 @@ class Game:
             ),
         )
 
-        # load the car on road
+        # load the vehicles on road
         self.SCREEN.blit(self.car, self.car_loc)
         self.SCREEN.blit(self.car2, self.car2_loc)
+        self.SCREEN.blit(self.truck, self.truck_loc)
 
     def display_score(self):
         self.message_display(
@@ -415,14 +441,16 @@ class Game:
         self.game_state = "MAIN GAME"
         self.has_update_scores = False
         self.scores = []
+        self.current_enemy = None  # Reset current enemy
         self.car_loc.center = (
             self.right_lane,
             self.SCREEN_HEIGHT - self.car_loc.height * 0.5,
         )
         self.car2_loc = self.car2.get_rect()
-        self.car2_loc.center = (self.left_lane, self.SCREEN_HEIGHT * 0.2)
+        self.car2_loc.center = (self.left_lane, -1000)  # Start off-screen
+        self.truck_loc = self.truck.get_rect()
+        self.truck_loc.center = (self.right_lane, -self.truck_loc.height - 1000)  # Start off-screen
         self.car_lane = "R"
-        self.car2_lane = "L"
         print("Restart!")
 
     @staticmethod
@@ -477,8 +505,5 @@ class Game:
         return scores_padded
 
 if __name__ == "__main__":
-
     game = Game()
-
     game.main_loop()
-
